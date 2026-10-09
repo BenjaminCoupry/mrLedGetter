@@ -1,0 +1,6 @@
+psutil
+numpy
+opencv-python-headless
+ledgetter @ git+https://github.com/BenjaminCoupry/LED-getter.git@4d4febec3ac100cc48cba27875ebaba202f6c100
+jax[cuda12]==0.9.0.1
+optax
