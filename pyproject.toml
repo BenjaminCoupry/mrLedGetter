@@ -23,6 +23,8 @@ dependencies = [
     # (Python >= 3.11, CUDA 12 wheels)
     "jax[cuda12]==0.9.0.1",
     "optax",
+    # LED-getter serialization of the fitted light functions (ledgetter exports)
+    "flatbuffers",
 ]
 
 # Meshroom discovers the nodes from MESHROOM_PLUGINS_PATH, not site-packages.
