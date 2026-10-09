@@ -139,3 +139,10 @@ def test_rejects_non_linear_images(tmp_path, caplog):
     with pytest.raises(RuntimeError, match="could not be processed"):
         psModule.run(FakeChunk(node), FakeBackend())
     assert "outputFileType=exr" in caplog.text
+
+
+def test_excluded_reference_image_is_not_reported_as_uncalibrated(tmp_path, caplog):
+    _, backend = _solve(tmp_path, lightsValues={"excludePoseReferenceImage": True}, excludePoseReferenceImage=True)
+    _, data, lights, _ = [c for c in backend.calls if c[0] == "solvePhotometricStereo"][0]
+    assert data["images"].shape[2] == 3 and np.allclose(lights["light_power"], [1, 2, 3])
+    assert "without calibrated light" not in caplog.text
