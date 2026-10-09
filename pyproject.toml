@@ -15,7 +15,8 @@ dependencies = [
     "psutil",
     # common photometric stereo layer (psCommon.py) and nodes
     "numpy",
-    "opencv-python-headless",
+    # OpenCV 5 wheels are built without OpenEXR: psCommon reads the linear EXR exports with OpenCV 4
+    "opencv-python-headless>=4.8,<5",
     # LED-getter library, pinned to a commit (it requires plain "jax", i.e. CPU only, and sphericart-jax==1.0.8)
     "ledgetter @ git+https://github.com/BenjaminCoupry/LED-getter.git@4d4febec3ac100cc48cba27875ebaba202f6c100",
     # GPU JAX: sphericart-jax 1.0.8 requires jax>=0.6.0,<0.9.1; 0.9.0.1 is the latest release in that range

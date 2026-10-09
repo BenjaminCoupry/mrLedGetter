@@ -51,7 +51,7 @@ export MESHROOM_PLUGINS_PATH=/path/to/your/plugins/mrLedGetter:$MESHROOM_PLUGINS
   dependencies: optax, open3d, plotly, sphericart-jax 1.0.8, ...),
 - `jax[cuda12]==0.9.0.1`: sphericart-jax 1.0.8 requires `jax>=0.6.0,<0.9.1`, 0.9.0.1 is the latest release in that
   range (LED-getter itself requires plain `jax`, CPU only),
-- `numpy`, `opencv-python-headless` (image and mask I/O of `psCommon.py`), `optax`, `psutil`.
+- `numpy`, `opencv-python-headless` 4.x (image and mask I/O of `psCommon.py`; the OpenCV 5 wheels cannot read EXR), `optax`, `psutil`.
 
 To work on a local LED-getter clone: `venv/bin/pip install -e /path/to/LED-getter` after the install above.
 
