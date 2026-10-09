@@ -79,11 +79,20 @@ def test_ps_node_attributes():
     common = ps.inputAttributes() + ps.advancedInputAttributes() + ps.settingsAttributes()
     for attribute in common:
         assert attribute.name in inputs and inputs[attribute.name].value == attribute.value, attribute.name
-    for name in ("inputMesh", "meshAliceVisionAxes", "inputLights", "iterations", "splitFactor", "chunks",
+    for name in ("inputMesh", "meshAliceVisionAxes", "inputLights", "iterations", "splitFactor", "gpuChunks",
                  "learningRate", "delta"):
         assert name in inputs, name
-    assert inputs["iterations"].value == 1000 and inputs["splitFactor"].value == 2 and inputs["chunks"].value == 100
+    assert inputs["iterations"].value == 1000 and inputs["splitFactor"].value == 2 and inputs["gpuChunks"].value == 100
     assert inputs["delta"].value == pytest.approx(0.01)
     outputs = [attribute.name for attribute in node.outputs]
     assert outputs == [attribute.name for attribute in ps.outputAttributes(extraMaps=("albedo",))]
     assert "outputSfmDataAlbedo" in outputs and "albedoMaps" in outputs
+
+
+@pytest.mark.parametrize("moduleName,className", NODES)
+def test_attribute_names_do_not_shadow_node_members(moduleName, className):
+    """node.<name> must resolve to the attribute: a name like "chunks" returns the Node's own member instead."""
+    from meshroom.core.node import Node
+    _, node = _node(moduleName, className)
+    for attribute in node.inputs + node.outputs:
+        assert not hasattr(Node, attribute.name), attribute.name

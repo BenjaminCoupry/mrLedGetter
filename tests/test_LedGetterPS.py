@@ -53,7 +53,7 @@ def _decode(path):
 
 
 def test_outputs_like_the_other_ps_nodes(tmp_path):
-    cache, backend = _solve(tmp_path, iterations=300, learningRate=0.005, delta=0.02, chunks=7)
+    cache, backend = _solve(tmp_path, iterations=300, learningRate=0.005, delta=0.02, gpuChunks=7)
     normalSfm = json.loads((cache / "normalMaps.sfm").read_text())
     assert sorted(v["viewId"] for v in normalSfm["views"]) == ["100", "200"]
     assert {v["path"] for v in normalSfm["views"]} == {str(cache / "100.png"), str(cache / "200.png")}

@@ -70,8 +70,8 @@ downscale factor), ready for RNb-NeuS2.
             range=(1, 8, 1),
         ),
         desc.IntParam(
-            name="chunks",
-            label="Chunks Per Subset",
+            name="gpuChunks",
+            label="GPU Chunks Per Subset",
             description="Each pixel subset is solved in this number of successive chunks on the GPU (LED-getter "
                         "'--ps_chunck_number'): increase it if the GPU runs out of memory.",
             value=100,
@@ -192,7 +192,7 @@ def run(chunk, backend):
     logger.info("{} multi-lighting pose(s) to process.".format(len(poses)))
     settings = {"device": backend.selectDevice(params.useGpu, logger), "iterations": int(node.iterations.value),
                 "learningRate": float(node.learningRate.value), "delta": float(node.delta.value),
-                "chunks": int(node.chunks.value)}
+                "chunks": int(node.gpuChunks.value)}
     extension = psCommon.mapExtension(node)
     mapPaths = {name: {} for name in ("normal",) + EXTRA_MAPS}
     processed, failed = [], []

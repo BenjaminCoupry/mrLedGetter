@@ -162,7 +162,7 @@ Same inputs as the other photometric stereo nodes (`inputSfm`, `maskFolder`, `do
 | `inputLights` | Lights | | Output folder of LedGetterLights |
 | `iterations` | Iterations | 1000 | Iterations of the per-pixel solve |
 | `splitFactor` | Pixel Split | 2 | Pixels solved in N x N interleaved subsets, then merged at full resolution (formerly `decimation` of SolvePS): less memory, the images are read again per subset |
-| `chunks` | Chunks Per Subset | 100 | Advanced: successive GPU chunks per subset (LED-getter `--ps_chunck_number`) |
+| `gpuChunks` | GPU Chunks Per Subset | 100 | Advanced: successive GPU chunks per subset (LED-getter `--ps_chunck_number`) |
 | `learningRate`, `delta` | | 0.001, 0.01 | Advanced: Adam learning rate, Huber loss threshold |
 
 ### Outputs
@@ -206,7 +206,7 @@ more), in the environment or in `meshroom/config.json`:
 ]
 ```
 
-Memory knobs: `samplingStep` (LedGetterLights), `splitFactor` and `chunks` (LedGetterPS), `downscale`, `nbImages`.
+Memory knobs: `samplingStep` (LedGetterLights), `splitFactor` and `gpuChunks` (LedGetterPS), `downscale`, `nbImages`.
 
 ---
 
