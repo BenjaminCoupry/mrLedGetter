@@ -31,6 +31,14 @@ from . import psCommon
 # Node attributes
 # --------------------------------------------------------------------------------------------------------
 
+METHOD_INFO = [
+    ("method", "Self-calibrated Near-light Photometric Stereo using a Geometric Proxy (B. Coupry, F. Lauze, "
+               "A. Laurent, J. Mélou, Y. Quéau, J.-D. Durou, SSVM 2025)"),
+    ("methodLicense", "MIT"),
+    ("methodRepository", "https://github.com/BenjaminCoupry/LED-getter"),
+]
+MIN_LIGHTS = 3  # minimum number of lighting images of a pose
+
 LINEAR_INPUT_NOTE = (
     "**Linear input images are mandatory**: the near-light model is physical (intensity proportional to the "
     "irradiance). Use the float images of ExportImages (outputFileType=exr: linear half float). 8/16-bit images "

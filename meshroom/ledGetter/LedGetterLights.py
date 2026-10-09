@@ -14,13 +14,6 @@ from . import ledCommon
 from . import lightsIO
 from . import psCommon
 
-METHOD_INFO = [
-    ("method", "Self-calibrated Near-light Photometric Stereo using a Geometric Proxy (B. Coupry, F. Lauze, "
-               "A. Laurent, J. Mélou, Y. Quéau, J.-D. Durou, SSVM 2025)"),
-    ("methodLicense", "MIT"),
-    ("methodRepository", "https://github.com/BenjaminCoupry/LED-getter"),
-]
-MIN_LIGHTS = 3
 MIN_PIXELS = 50  # sanity floor: fewer pixels on the mesh means a misplaced mesh or mask
 
 
@@ -30,7 +23,7 @@ class LedGetterLights(desc.Node):
     category = "Photometric Stereo"
     gpu = desc.Level.INTENSIVE
     size = desc.DynamicNodeSize("inputSfm")
-    __nodeInfo__ = METHOD_INFO
+    __nodeInfo__ = ledCommon.METHOD_INFO
 
     documentation = """
 Self-calibration of the lights of each multi-lighting pose with LED-getter (near-light photometric stereo using a
@@ -137,8 +130,9 @@ def calibratePose(poseId, views, sfm, params, node, settings, backend, logger):
     """Calibrate the lights of one pose and write them; returns the pose lights (JSON dict)."""
     camera = ledCommon.poseCamera(sfm, poseId, views, params.downscale)
     selected = ledCommon.lightingViews(poseId, views, params)
-    if len(selected) < MIN_LIGHTS:
-        raise RuntimeError("{} lighting image(s), at least {} are needed".format(len(selected), MIN_LIGHTS))
+    if len(selected) < ledCommon.MIN_LIGHTS:
+        raise RuntimeError("{} lighting image(s), at least {} are needed".format(len(selected),
+                                                                                 ledCommon.MIN_LIGHTS))
     size = (camera.width, camera.height)
     mask, source = ledCommon.poseMask(poseId, views, params, size, logger)
     rows, cols = ledCommon.gridIndices(camera.height, camera.width, node.samplingStep.value)

@@ -8,7 +8,7 @@ import helpers
 
 from meshroom.core import desc
 
-NODES = [("LedGetterLights", "LedGetterLights")]
+NODES = [("LedGetterLights", "LedGetterLights"), ("LedGetterPS", "LedGetterPS")]
 METHOD = ("Self-calibrated Near-light Photometric Stereo using a Geometric Proxy (B. Coupry, F. Lauze, A. Laurent, "
           "J. Mélou, Y. Quéau, J.-D. Durou, SSVM 2025)")
 
@@ -68,3 +68,22 @@ def test_lights_node_attributes():
     assert inputs["iterations"].value == 10000 and inputs["samplingStep"].value == 10
     assert inputs["meshAliceVisionAxes"].value is True
     assert [attribute.name for attribute in node.outputs] == ["outputFolder", "outputLights"]
+
+
+def test_ps_node_attributes():
+    """Same inputs and outputs as the other photometric stereo nodes (psCommon), plus the mesh, the lights and the
+    solve parameters; the albedo is an extra map (albedo/<poseId> + albedoMaps.sfm), as in mrSDMUniPS."""
+    _, node = _node("LedGetterPS", "LedGetterPS")
+    ps = helpers.loadModule("psCommon")
+    inputs = {attribute.name: attribute for attribute in node.inputs}
+    common = ps.inputAttributes() + ps.advancedInputAttributes() + ps.settingsAttributes()
+    for attribute in common:
+        assert attribute.name in inputs and inputs[attribute.name].value == attribute.value, attribute.name
+    for name in ("inputMesh", "meshAliceVisionAxes", "inputLights", "iterations", "splitFactor", "chunks",
+                 "learningRate", "delta"):
+        assert name in inputs, name
+    assert inputs["iterations"].value == 1000 and inputs["splitFactor"].value == 2 and inputs["chunks"].value == 100
+    assert inputs["delta"].value == pytest.approx(0.01)
+    outputs = [attribute.name for attribute in node.outputs]
+    assert outputs == [attribute.name for attribute in ps.outputAttributes(extraMaps=("albedo",))]
+    assert "outputSfmDataAlbedo" in outputs and "albedoMaps" in outputs
