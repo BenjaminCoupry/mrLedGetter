@@ -246,6 +246,88 @@ def lightingViews(poseId, views, params, calibrated=None):
                                 psCommon.poseSeed(params.seed, poseId))
 
 
+def frameNumber(view):
+    """Frame number of a view (AliceVision frameId: the number in the image filename), None if it has none."""
+    try:
+        return int(str(view.get("frameId", "")))
+    except ValueError:
+        return None
+
+
+def rigLightKeys(views, matching):
+    """Lighting views of a pose ordered by frame number, and the key of their light in a light rig.
+
+    matching: "rank" (key = position of the image in the frame number order: same shooting sequence in every pose)
+    or "frameId" (key = frame number: same numbering in every pose).
+
+    Returns:
+        (views in frame number order, list of keys)
+    """
+    numbers = [frameNumber(view) for view in views]
+    if any(number is None for number in numbers):
+        missing = [str(view.get("viewId")) for view, number in zip(views, numbers) if number is None]
+        raise RuntimeError("Light rig: no frame number for the view(s) {} (the light of an image is identified by "
+                           "the number in its filename).".format(", ".join(missing)))
+    order = sorted(range(len(views)), key=lambda i: (numbers[i], str(views[i].get("viewId"))))
+    ordered = [views[i] for i in order]
+    if matching == "rank":
+        return ordered, list(range(len(ordered)))
+    if matching == "frameId":
+        keys = [numbers[i] for i in order]
+        if len(set(keys)) != len(keys):
+            raise RuntimeError("Light rig: several images of a pose share a frame number ({}): use the 'rank' "
+                               "matching.".format(sorted({k for k in keys if keys.count(k) > 1})))
+        return ordered, keys
+    raise ValueError("Unknown rig light matching: '{}'".format(matching))
+
+
+def rigGroups(posesKeys):
+    """Poses sharing the same sequence of light keys: [(keys, [poseIds])], in order of first appearance.
+
+    Args:
+        posesKeys: {poseId: list of light keys}.
+    """
+    groups = {}
+    for poseId, keys in posesKeys.items():
+        groups.setdefault(tuple(keys), []).append(poseId)
+    return [(list(keys), poseIds) for keys, poseIds in groups.items()]
+
+
+RIG_SEPARATOR_ROWS = 16  # > dilation + erosion of LED-getter's validity morphology: no interaction between poses
+PIXELWISE_VALUES = ("rho", "rho_spec", "pixels", "points", "normals", "filters", "objects_id")
+
+
+def stackPoseData(poseData):
+    """Calibration data of several poses as one LED-getter problem (light rig: same lights for all the poses).
+
+    The pixels are concatenated pose after pose; the grid masks are stacked vertically (padded to the widest
+    one), separated by RIG_SEPARATOR_ROWS empty rows, so that the row-major order of the stacked grid is the
+    order of the concatenated pixels and the validity morphology of a pose does not reach the others.
+
+    Returns:
+        (stacked data, number of pixels of each pose)
+    """
+    width = max(data["gridMask"].shape[1] for data in poseData)
+    rows = []
+    for index, data in enumerate(poseData):
+        if index:
+            rows.append(np.zeros((RIG_SEPARATOR_ROWS, width), bool))
+        gridMask = data["gridMask"]
+        rows.append(np.pad(gridMask, ((0, 0), (0, width - gridMask.shape[1]))))
+    stacked = {key: np.concatenate([data[key] for data in poseData], axis=0)
+               for key in ("images", "pixels", "points", "normals", "objectsId")}
+    stacked["gridMask"] = np.concatenate(rows, axis=0)
+    return stacked, [len(data["pixels"]) for data in poseData]
+
+
+def splitPoseValues(values, counts, index):
+    """LED-getter values of pose index from the values of a stacked problem (stackPoseData): the per-pixel values
+    are sliced, the light values are shared."""
+    start = int(sum(counts[:index]))
+    return {key: (np.asarray(value)[start:start + counts[index]] if key in PIXELWISE_VALUES else value)
+            for key, value in values.items()}
+
+
 def poseMask(poseId, views, params, size, logger):
     """psCommon pose mask resized to size = (width, height): (bool mask or None, description of the source)."""
     if params.maskPoseReferenceOnly:

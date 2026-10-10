@@ -91,11 +91,12 @@ def lightIntensities(nbLights):
     return [0.2 + 0.1 * i for i in range(nbLights)]
 
 
-def writeScene(folder, nbLights=4, poses=("100", "200"), fileType="exr", alphaMask=True):
+def writeScene(folder, nbLights=4, poses=("100", "200"), fileType="exr", alphaMask=True, frameIdStep=None):
     """Multi-lighting poses (one view per light, the first one with viewId == poseId) + one single view.
 
     Image values: linear intensity of the light, constant over the image (float EXR or 8-bit PNG); the alpha
-    channel holds an object mask (a rectangle) when alphaMask is set.
+    channel holds an object mask (a rectangle) when alphaMask is set. With frameIdStep, the view of light l in the
+    i-th pose gets the frameId i * frameIdStep + l + 1 (0: same numbering in every pose).
     Returns the SfMData path.
     """
     folder = str(folder)
@@ -113,6 +114,8 @@ def writeScene(folder, nbLights=4, poses=("100", "200"), fileType="exr", alphaMa
             writeImage(path, rgb, alpha if alphaMask else None)
             views.append({"viewId": viewId, "poseId": poseId, "intrinsicId": "1", "path": path,
                           "width": str(WIDTH), "height": str(HEIGHT)})
+            if frameIdStep is not None:
+                views[-1]["frameId"] = str(index * frameIdStep + light + 1)
     views.append({"viewId": "900", "poseId": "900", "intrinsicId": "1", "path": os.path.join(folder, "900.png"),
                   "width": str(WIDTH), "height": str(HEIGHT)})
     sfmPoses.append(aliceVisionPose("900", np.eye(3), [0.0, 0.0, -1.0]))
@@ -150,6 +153,10 @@ class FakeBackend:
     def loadMesh(self, meshPath, flipMesh, rotation, center):
         self.calls.append(("loadMesh", meshPath, flipMesh, np.array(rotation), np.array(center)))
         return {"meshPath": meshPath}
+
+    def mergeScenes(self, scenes, counts):
+        self.calls.append(("mergeScenes", list(scenes), list(counts)))
+        return {"scenes": list(scenes), "counts": list(counts)}
 
     def castRays(self, scene, K, pixels):
         pixels = np.asarray(pixels, np.float64)

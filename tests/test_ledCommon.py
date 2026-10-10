@@ -253,3 +253,59 @@ def test_params_with_defaults_for_missing_attributes(tmp_path):
     params = lc.commonParams(node)
     assert params.nbImages == 5 and params.normalConvention == "opengl" and params.outputFormat == "png16"
     assert params.outputMaskFolder == str(tmp_path / "masks")
+
+
+# ---------------------------------------------------------------------------------------------- light rig
+
+def _frameViews(frameIds):
+    return [{"viewId": str(10 + i), "frameId": str(f)} for i, f in enumerate(frameIds)]
+
+
+def test_rig_light_keys_rank_follows_frame_numbers():
+    ordered, keys = lc.rigLightKeys(_frameViews([1903, 1901, 1902]), "rank")
+    assert [v["frameId"] for v in ordered] == ["1901", "1902", "1903"] and keys == [0, 1, 2]
+
+
+def test_rig_light_keys_frame_id():
+    ordered, keys = lc.rigLightKeys(_frameViews([51, 1, 6]), "frameId")
+    assert keys == [1, 6, 51] and [v["viewId"] for v in ordered] == ["11", "12", "10"]
+
+
+def test_rig_light_keys_errors():
+    with pytest.raises(RuntimeError, match="no frame number"):
+        lc.rigLightKeys([{"viewId": "1"}, {"viewId": "2", "frameId": "3"}], "rank")
+    with pytest.raises(RuntimeError, match="share a frame number"):
+        lc.rigLightKeys(_frameViews([4, 4]), "frameId")
+    with pytest.raises(ValueError):
+        lc.rigLightKeys(_frameViews([1]), "other")
+
+
+def test_rig_groups_by_sequence():
+    groups = lc.rigGroups({"a": [0, 1, 2], "b": [0, 1], "c": [0, 1, 2]})
+    assert groups == [([0, 1, 2], ["a", "c"]), ([0, 1], ["b"])]
+
+
+def test_stack_pose_data_order_and_separation():
+    def data(gridMask, offset):
+        n = int(gridMask.sum())
+        return {"images": np.full((n, 3, 2), offset, np.float32), "pixels": np.full((n, 2), offset, np.int32),
+                "points": np.full((n, 3), offset, np.float32), "normals": np.zeros((n, 3), np.float32),
+                "objectsId": np.zeros(n, np.int32), "gridMask": gridMask}
+    first = np.array([[True, False, True], [False, True, False]])
+    second = np.array([[True, True], [False, True]])
+    stacked, counts = lc.stackPoseData([data(first, 1), data(second, 2)])
+    assert counts == [3, 3]
+    gridMask = stacked["gridMask"]
+    assert gridMask.shape == (2 + lc.RIG_SEPARATOR_ROWS + 2, 3)
+    assert not gridMask[2:2 + lc.RIG_SEPARATOR_ROWS].any() and not gridMask[:, 2][-2:].any()
+    # row-major order of the stacked grid = pose after pose
+    assert stacked["pixels"][:, 0].tolist() == [1, 1, 1, 2, 2, 2] and gridMask.sum() == 6
+    assert stacked["images"].shape == (6, 3, 2)
+
+
+def test_split_pose_values():
+    values = {"rho": np.arange(10).reshape(5, 2), "pixels": np.arange(10).reshape(5, 2),
+              "light_locations": np.ones((4, 3)), "mu": np.array([0.5, 0.5, 0.5])}
+    second = lc.splitPoseValues(values, [2, 3], 1)
+    assert second["rho"].tolist() == [[4, 5], [6, 7], [8, 9]] and second["pixels"].shape == (3, 2)
+    assert second["light_locations"] is values["light_locations"] and second["mu"] is values["mu"]

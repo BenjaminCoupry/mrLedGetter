@@ -107,3 +107,74 @@ def test_failure_policy_never(tmp_path):
             raise MemoryError("simulated out of memory")
     module.run(FakeChunk(_node(tmp_path, failurePolicy="never")), FailingBackend())
     assert json.loads((tmp_path / "cache" / "lights.json").read_text())["poses"] == {}
+
+
+def _rigScene(tmp_path, frameIdStep, dropView=None, nbLights=4):
+    """Three poses of nbLights lights; dropView removes one lighting view (its pose then has another sequence)."""
+    sfmPath = helpers.writeScene(tmp_path / "images", nbLights=nbLights, poses=("100", "200", "300"),
+                                 frameIdStep=frameIdStep)
+    if dropView:
+        sfm = json.loads(open(sfmPath).read())
+        sfm["views"] = [v for v in sfm["views"] if v["viewId"] != dropView]
+        with open(sfmPath, "w") as f:
+            json.dump(sfm, f)
+    return sfmPath
+
+
+def test_light_rig_joint_calibration(tmp_path):
+    backend = FakeBackend()
+    sfmPath = _rigScene(tmp_path, frameIdStep=37, dropView="302")  # gourdan-like numbering: 1..4, 38..41, 75..
+    node = _node(tmp_path, inputSfm=sfmPath, lightRig=True)
+    module.run(FakeChunk(node), backend)
+    cache = tmp_path / "cache"
+    calls = [c for c in backend.calls if c[0] == "calibrateLights"]
+    assert len(calls) == 2  # the rig of poses 100 and 200, then pose 300 alone (3 lights)
+    _, data, _, exportFolder, lightNames = calls[0]
+    nbPixels = int(_expectedPixels().sum())
+    assert lightNames == ["0", "1", "2", "3"] and exportFolder == str(cache / "rig_100" / "ledgetter")
+    assert data["images"].shape == (2 * nbPixels, 3, 4)
+    assert data["gridMask"].shape == (2 * helpers.HEIGHT + lc.RIG_SEPARATOR_ROWS, helpers.WIDTH)
+    merge = [c for c in backend.calls if c[0] == "mergeScenes"]
+    assert len(merge) == 1 and merge[0][2] == [nbPixels, nbPixels]
+    assert calls[1][4] == ["300", "301", "303"]
+
+    first, second = (json.loads((cache / p / "lights.json").read_text()) for p in ("100", "200"))
+    assert [light["viewId"] for light in second["lights"]] == ["200", "201", "202", "203"]
+    for a, b in zip(first["lights"], second["lights"]):
+        assert np.allclose(a["positionCamera"], b["positionCamera"])  # one set of lights in the camera frame
+    assert not np.allclose(first["lights"][1]["positionWorld"], second["lights"][1]["positionWorld"])
+    assert first["rig"]["poses"] == ["100", "200"] and first["rig"]["matching"] == "rank"
+    with np.load(cache / "200" / "calibration.npz") as archive:
+        assert len(archive["rho"]) == nbPixels and len(archive["pixels"]) == nbPixels
+    assert "rig" not in json.loads((cache / "300" / "lights.json").read_text())
+
+
+def test_light_rig_frame_id_matching(tmp_path):
+    backend = FakeBackend()
+    sfmPath = _rigScene(tmp_path, frameIdStep=37)
+    module.run(FakeChunk(_node(tmp_path, inputSfm=sfmPath, lightRig=True, rigLightMatching="frameId")), backend)
+    # gourdan-like numbering differs between poses: no pose shares its frame numbers, all calibrated alone
+    assert len([c for c in backend.calls if c[0] == "calibrateLights"]) == 3
+    backend = FakeBackend()
+    sfmPath = _rigScene(tmp_path / "same", frameIdStep=0)
+    module.run(FakeChunk(_node(tmp_path / "same", inputSfm=sfmPath, lightRig=True, rigLightMatching="frameId")),
+               backend)
+    calls = [c for c in backend.calls if c[0] == "calibrateLights"]
+    assert len(calls) == 1 and calls[0][4] == ["1", "2", "3", "4"]
+
+
+def test_light_rig_selection_and_reference_exclusion(tmp_path):
+    backend = FakeBackend()
+    sfmPath = _rigScene(tmp_path, frameIdStep=0, nbLights=5)
+    node = _node(tmp_path, inputSfm=sfmPath, lightRig=True, excludePoseReferenceImage=True, nbImages=3,
+                 imageSelection="first")
+    module.run(FakeChunk(node), backend)
+    calls = [c for c in backend.calls if c[0] == "calibrateLights"]
+    assert len(calls) == 1 and calls[0][4] == ["0", "1", "2"]  # ranks after the exclusion of the reference image
+    lights = json.loads((tmp_path / "cache" / "300" / "lights.json").read_text())
+    assert [light["viewId"] for light in lights["lights"]] == ["301", "302", "303"]
+
+
+def test_light_rig_without_frame_numbers(tmp_path, caplog):
+    with pytest.raises(RuntimeError, match="no frame number"):
+        module.run(FakeChunk(_node(tmp_path, lightRig=True)), FakeBackend())

@@ -56,6 +56,23 @@ def loadMesh(meshPath, flipMesh, rotation, center):
     return raycasting.get_mesh_raycaster(mesh)
 
 
+def mergeScenes(scenes, counts):
+    """Ray caster of several poses for a joint light calibration (light rig, ledCommon.stackPoseData).
+
+    LED-getter casts the shadow rays of all the pixels at once (first axis: pixels); the rays of the counts[i]
+    pixels of pose i are cast on the mesh of pose i (each mesh is in the camera frame of its pose).
+    """
+    import jax.numpy as jnp
+    import numpy as np
+    bounds = np.concatenate([[0], np.cumsum(counts)]).astype(int).tolist()
+
+    def raycaster(t, d):
+        t, d = jnp.broadcast_arrays(t, d)
+        parts = [scene(t[start:end], d[start:end]) for scene, start, end in zip(scenes, bounds[:-1], bounds[1:])]
+        return tuple(jnp.concatenate(values, axis=0) for values in zip(*parts))
+    return raycaster
+
+
 def castRays(scene, K, pixels):
     """Intersections of the rays of pixels (u, v) with the mesh (CPU, Open3D).
 

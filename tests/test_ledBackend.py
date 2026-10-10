@@ -4,7 +4,7 @@ import sys
 
 import helpers
 
-API = ("selectDevice", "loadMesh", "castRays", "calibrateLights", "solvePhotometricStereo")
+API = ("selectDevice", "loadMesh", "mergeScenes", "castRays", "calibrateLights", "solvePhotometricStereo")
 
 
 def test_backend_imports_without_jax():

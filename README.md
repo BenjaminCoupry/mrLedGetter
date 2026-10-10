@@ -105,6 +105,8 @@ initialized by the previous: directional, punctual, then LED.
 | `nbImages` | Number Of Images | -1 | Maximum number of lighting images per pose (-1: all) |
 | `inputMesh` | Proxy Mesh | | `.obj` / `.ply` mesh in the SfMData world frame (Meshing / MeshFiltering) |
 | `samplingStep` | Pixel Sampling Step | 10 | Calibration on one pixel every N rows and columns of the mask (formerly `decimation`, LED-getter `--step`) |
+| `lightRig` | Light Rig | false | Lights fixed to the camera: the poses lit by the same sequence of lights share one set of lights, calibrated jointly (see [Light rig](#light-rig)) |
+| `rigLightMatching` | Rig Light Matching | rank | How an image is matched to a light of the rig: `rank` (n-th image of each pose in frame number order) or `frameId` (same frame number in every pose) |
 | `iterations` | Iterations | 10000 | Iterations of each light model |
 | `useGpu` | Use GPU | true | JAX on the GPU (CPU if unavailable) |
 
@@ -115,11 +117,32 @@ LED-getter default), `exportImages` (false: per-light diagnostic images of LED-g
 `maskVoteThreshold`, `maskPoseReferenceOnly`, `maskRemoveBorderComponents`, `maskUseGlobalFile`, `failurePolicy`,
 `verboseLevel`.
 
+### Light rig
+
+By default the lights of each pose are calibrated alone (LED-getter calibrates one pose at a time). When the lights
+are fixed to the camera (LED ring or dome carrying the camera, lighting arm; the object moves between poses), the
+same light has the same position, direction and power in the camera frame of every pose. With `lightRig`, the poses
+lit by the same sequence of lights are calibrated **jointly**: their calibration pixels (camera-frame points and
+normals of the proxy mesh, image values) are concatenated into one LED-getter problem with one set of lights, the
+albedo staying free per pixel; the cast shadows of each pixel are tested on the mesh of its own pose. Each pose still
+gets its `<poseId>/lights.json` (the same camera-frame lights, the world-frame values of its pose) with a `rig` entry
+(poses, light keys, matching); the LED-getter exports of the joint calibration are in `rig_<first poseId>/ledgetter/`.
+
+The light of an image is identified by its frame number (AliceVision `frameId`, the number in the image filename):
+
+- `rank`: the n-th lighting image of every pose (frame number order) is lit by the same light, i.e. the shooting
+  sequence is the same in every pose (e.g. `DSC_1903.NEF`... `DSC_1937.NEF` then `DSC_1940.NEF`...). The pose
+  reference image is not counted when `excludePoseReferenceImage` is enabled.
+- `frameId`: the same frame number in every pose (e.g. `led_3-photo-...-0051.nef`, `RTI_00012.NEF`).
+
+Poses whose sequence of lights is shared by no other pose (another number of images, other frame numbers) are
+calibrated alone, as without the option. `nbImages` selects the same lights in every pose of a rig.
+
 ### Outputs
 
 | Parameter | Description |
 |-----------|-------------|
-| `outputFolder` | `<poseId>/lights.json`, `<poseId>/calibration.npz`, `<poseId>/ledgetter/<model>/` (LED-getter exports: `misc/light_plot.html`, `losses/loss_plot.html`, `values/`, `model.json`, `light/*.lp`, ...) |
+| `outputFolder` | `<poseId>/lights.json`, `<poseId>/calibration.npz`, `<poseId>/ledgetter/<model>/` (or `rig_<poseId>/ledgetter/<model>/` for a light rig) (LED-getter exports: `misc/light_plot.html`, `losses/loss_plot.html`, `values/`, `model.json`, `light/*.lp`, ...) |
 | `outputLights` | `lights.json`: the lights of all the poses |
 
 `<poseId>/lights.json` (format `ledgetter-lights` 1.0, frames and model also described in the file):

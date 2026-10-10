@@ -17,6 +17,14 @@ from . import psCommon
 MIN_PIXELS = 50  # sanity floor: fewer pixels on the mesh means a misplaced mesh or mask
 
 
+def uidIgnoredWhen(value, attribute):
+    """Attribute whose given value does not contribute to the node UID: an option added with its default value keeps
+    the UID (and the computed caches) of the existing nodes. desc.BoolParam has no 'uidIgnoreValue' argument (only
+    desc.StringParam has one): it is set on the description."""
+    attribute._uidIgnoreValue = value
+    return attribute
+
+
 class LedGetterLights(desc.Node):
     """Self-calibration of the near lights of each multi-lighting pose with LED-getter."""
 
@@ -45,6 +53,13 @@ frame of the pose and in the SfMData world frame, anisotropy, camera), <poseId>/
 initialization of LedGetterPS) and the LED-getter exports of each model (<poseId>/ledgetter/<model>/:
 light_plot.html, loss_plot.html, values...); lights.json gathers all the poses.
 
+**Light rig:** when the lights are fixed to the camera (LED ring, dome or arm carrying the camera, the object moving
+between poses), enable 'Light Rig': the poses lit by the same sequence of lights share one set of lights, calibrated
+jointly on the pixels of all of them (one optimization, each shadow ray cast on the mesh of its pose). The light of
+an image is identified by its frame number (the number in its filename): by rank in the pose (same shooting sequence)
+or by the number itself (same numbering). The poses whose sequence of lights is shared by no other pose (e.g. a
+different number of images) are calibrated alone. Each pose still gets its lights.json (camera and world frames).
+
 **Frames:** camera frame x right, y down, z forward (AliceVision / OpenCV), world frame of the SfMData poses,
 SfMData world units; pixel (u, v) = (column, row) with the center of pixel i at i (AliceVision and LED-getter).
 """
@@ -58,6 +73,27 @@ SfMData world units; pixel (u, v) = (column, row) with the center of pixel i at 
                         "memory.",
             value=10,
             range=(1, 30, 1),
+        ),
+        uidIgnoredWhen(False, desc.BoolParam(
+            name="lightRig",
+            label="Light Rig",
+            description="The lights are fixed to the camera (the object moves between poses): the poses lit by the "
+                        "same sequence of lights share one set of lights, calibrated jointly on all of them. The "
+                        "poses whose sequence is shared by no other pose are calibrated alone.",
+            value=False,
+        )),
+        desc.ChoiceParam(
+            name="rigLightMatching",
+            label="Rig Light Matching",
+            description="How an image is matched to a light of the rig, from its frame number (the number in its "
+                        "filename):\n"
+                        " - rank: the n-th image of every pose, in frame number order (same shooting sequence in "
+                        "every pose; poses with another number of images are calibrated alone).\n"
+                        " - frameId: the same frame number in every pose (e.g. led_3-0051.nef, RTI_00012.NEF).",
+            values=["rank", "frameId"],
+            value="rank",
+            exclusive=True,
+            enabled=lambda node: node.lightRig.value,
         ),
         desc.IntParam(
             name="iterations",
@@ -126,10 +162,10 @@ def ledgetterPose(camera):
             "width": camera.width, "height": camera.height}
 
 
-def calibratePose(poseId, views, sfm, params, node, settings, backend, logger):
-    """Calibrate the lights of one pose and write them; returns the pose lights (JSON dict)."""
+def preparePose(poseId, selected, views, sfm, params, node, backend, logger):
+    """Calibration data of one pose: its camera, the LED-getter data at the sampled pixels of the pose mask that see
+    the mesh (ledBackend.calibrateLights) and the mesh scene in its camera frame."""
     camera = ledCommon.poseCamera(sfm, poseId, views, params.downscale)
-    selected = ledCommon.lightingViews(poseId, views, params)
     if len(selected) < ledCommon.MIN_LIGHTS:
         raise RuntimeError("{} lighting image(s), at least {} are needed".format(len(selected),
                                                                                  ledCommon.MIN_LIGHTS))
@@ -153,15 +189,116 @@ def calibratePose(poseId, views, sfm, params, node, settings, backend, logger):
         int(hit.sum())))
     data = {"images": images[valid], "pixels": pixels[valid], "points": points[valid], "normals": normals[valid],
             "objectsId": objectsId[valid], "gridMask": gridMask}
-    outputFolder = node.outputFolder.value
-    exportFolder = os.path.join(outputFolder, poseId, lightsIO.LEDGETTER_FOLDER)
-    result = backend.calibrateLights(scene, data, settings, exportFolder, [str(v["viewId"]) for v in selected],
-                                     ledgetterPose(camera), logger)
+    return camera, data, scene
+
+
+def calibrateResult(backend, scene, data, settings, exportFolder, lightNames, camera, logger):
+    """LED-getter light values (camera frame) of a calibration."""
+    result = backend.calibrateLights(scene, data, settings, exportFolder, lightNames, ledgetterPose(camera), logger)
     if result["model"] != "LED":
         raise RuntimeError("unexpected light model '{}' (LED expected)".format(result["model"]))
-    lights = lightsIO.poseLights(poseId, camera, selected, result["values"], params.downscale)
-    lightsIO.writePoseLights(outputFolder, lights, result["values"])
+    return result["values"]
+
+
+def calibratePose(poseId, views, sfm, params, node, settings, backend, logger):
+    """Calibrate the lights of one pose and write them; returns the pose lights (JSON dict)."""
+    selected = ledCommon.lightingViews(poseId, views, params)
+    camera, data, scene = preparePose(poseId, selected, views, sfm, params, node, backend, logger)
+    outputFolder = node.outputFolder.value
+    exportFolder = os.path.join(outputFolder, poseId, lightsIO.LEDGETTER_FOLDER)
+    values = calibrateResult(backend, scene, data, settings, exportFolder, [str(v["viewId"]) for v in selected],
+                             camera, logger)
+    lights = lightsIO.poseLights(poseId, camera, selected, values, params.downscale)
+    lightsIO.writePoseLights(outputFolder, lights, values)
     return lights
+
+
+def rigLighting(poses, params, matching):
+    """Lighting views of each pose for a light rig: {poseId: (views ordered by light key, keys)}."""
+    lighting = {}
+    for poseId, views in poses.items():
+        candidates = [v for v in views if not (params.excludePoseReferenceImage and str(v.get("viewId")) == poseId)]
+        lighting[poseId] = ledCommon.rigLightKeys(candidates, matching)
+    return lighting
+
+
+def calibrateRig(poseIds, keys, lighting, poses, sfm, params, node, settings, backend, logger):
+    """Calibrate one set of lights on the poses of a light rig and write the lights of each pose.
+
+    Args:
+        keys: light keys shared by the poses; lighting: rigLighting result.
+
+    Returns:
+        ({poseId: pose lights}, [poseIds that could not be prepared])
+    """
+    selectedKeys = psCommon.selectViews(keys, params.nbImages, params.imageSelection,
+                                        psCommon.poseSeed(params.seed, poseIds[0]))
+    prepared, failed = [], []
+    for poseId in poseIds:
+        ordered, poseKeys = lighting[poseId]
+        byKey = dict(zip(poseKeys, ordered))
+        selected = [byKey[key] for key in selectedKeys]
+        try:
+            prepared.append((poseId, selected) + preparePose(poseId, selected, poses[poseId], sfm, params, node,
+                                                             backend, logger))
+        except Exception as exc:
+            logger.error("Pose {}: failed: {}\n{}".format(poseId, exc, traceback.format_exc()))
+            failed.append(poseId)
+    if not prepared:
+        return {}, failed
+    data, counts = ledCommon.stackPoseData([item[3] for item in prepared])
+    scene = backend.mergeScenes([item[4] for item in prepared], counts)
+    logger.info("Light rig: {} lights shared by {} pose(s) ({}), joint calibration on {} pixels.".format(
+        len(selectedKeys), len(prepared), ", ".join(item[0] for item in prepared), sum(counts)))
+    outputFolder = node.outputFolder.value
+    exportFolder = os.path.join(outputFolder, "rig_" + prepared[0][0], lightsIO.LEDGETTER_FOLDER)
+    values = calibrateResult(backend, scene, data, settings, exportFolder, [str(key) for key in selectedKeys],
+                             prepared[0][2], logger)
+    rig = {"poses": [item[0] for item in prepared], "lightKeys": [str(key) for key in selectedKeys],
+           "matching": node.rigLightMatching.value, "ledgetterExports": os.path.relpath(exportFolder, outputFolder)}
+    calibrated = {}
+    for index, (poseId, selected, camera, _, _) in enumerate(prepared):
+        poseValues = ledCommon.splitPoseValues(values, counts, index)
+        lights = dict(lightsIO.poseLights(poseId, camera, selected, poseValues, params.downscale), rig=rig)
+        lightsIO.writePoseLights(outputFolder, lights, poseValues)
+        calibrated[poseId] = lights
+    return calibrated, failed
+
+
+def calibrateAll(poses, sfm, params, node, settings, backend, logger):
+    """Calibrate the lights of every pose (alone, or jointly with the poses of its light rig).
+
+    Returns:
+        ({poseId: pose lights}, [failed poseIds])
+    """
+    if node.lightRig.value:
+        lighting = rigLighting(poses, params, node.rigLightMatching.value)
+        groups = ledCommon.rigGroups({poseId: keys for poseId, (_, keys) in lighting.items()})
+    else:
+        lighting, groups = None, [(None, [poseId]) for poseId in poses]
+    calibrated, failed = {}, []
+    for keys, poseIds in groups:
+        start = time.time()
+        if len(poseIds) > 1:
+            rigCalibrated, rigFailed = calibrateRig(poseIds, keys, lighting, poses, sfm, params, node, settings,
+                                                    backend, logger)
+            calibrated.update(rigCalibrated)
+            failed += rigFailed
+            logger.info("Light rig of {} pose(s): lights calibrated in {:.1f}s".format(len(rigCalibrated),
+                                                                                       time.time() - start))
+            continue
+        poseId = poseIds[0]
+        if node.lightRig.value:
+            logger.info("Pose {}: its sequence of {} lights is shared by no other pose, calibrated alone.".format(
+                poseId, len(keys)))
+        try:
+            calibrated[poseId] = calibratePose(poseId, poses[poseId], sfm, params, node, settings, backend, logger)
+            logger.info("Pose {} ({}/{}): lights calibrated in {:.1f}s".format(
+                poseId, len(calibrated), len(poses), time.time() - start))
+        except Exception as exc:
+            logger.error("Pose {}: failed: {}\n{}".format(poseId, exc, traceback.format_exc()))
+            failed.append(poseId)
+    return calibrated, failed
 
 
 def run(chunk, backend):
@@ -177,16 +314,7 @@ def run(chunk, backend):
     settings = {"device": backend.selectDevice(params.useGpu, logger), "iterations": int(node.iterations.value),
                 "learningRate": float(node.learningRate.value), "delta": float(node.delta.value),
                 "exportImages": bool(node.exportImages.value)}
-    calibrated, failed = {}, []
-    for index, (poseId, views) in enumerate(poses.items()):
-        start = time.time()
-        try:
-            calibrated[poseId] = calibratePose(poseId, views, sfm, params, node, settings, backend, logger)
-            logger.info("Pose {} ({}/{}): lights calibrated in {:.1f}s".format(
-                poseId, index + 1, len(poses), time.time() - start))
-        except Exception as exc:
-            logger.error("Pose {}: failed: {}\n{}".format(poseId, exc, traceback.format_exc()))
-            failed.append(poseId)
+    calibrated, failed = calibrateAll(poses, sfm, params, node, settings, backend, logger)
     lightsIO.writeSummary(node.outputLights.value, calibrated)
     logger.info("{} of {} pose(s) calibrated.".format(len(calibrated), len(poses)))
     psCommon.checkFailurePolicy(params.failurePolicy, len(calibrated), failed)
