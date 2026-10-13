@@ -140,7 +140,8 @@ def solvePose(poseId, views, sfm, params, node, settings, backend, logger):
     camera = ledCommon.poseCamera(sfm, poseId, views, params.downscale)
     lightsIO.checkSameCamera(lights, camera, logger)
     calibrated = lightsIO.calibratedViewIds(lights)
-    excluded = str(poseId) if params.excludePoseReferenceImage else None
+    excluded = (psCommon.poseReferenceViewId(poseId, views, params.poseReferencePattern)
+                if params.excludePoseReferenceImage else None)
     uncalibrated = [str(v["viewId"]) for v in views if str(v["viewId"]) not in calibrated | {excluded}]
     if uncalibrated:
         logger.warning("Pose {}: {} view(s) without calibrated light ignored: {}".format(

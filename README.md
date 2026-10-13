@@ -79,9 +79,11 @@ CameraInit -> ... -> StructureFromMotion -> SfMFilter* -> ExportImages (outputFi
 | `LedGetterPS.outputMaskFolder` | `RNbNeuS2.inputMaskFolder` |
 
 \* The all-light / ambient reference images that are not lit by a single light (e.g. `all_leds-*`, `LIGHT.NEF`,
-`*_ambient_all_leds`) must be removed before ExportImages (SfMFilter); `Exclude Pose Reference Image` removes the
-reference view of each pose (viewId == poseId) from the lighting images while keeping it for the mask and the
-output SfMData.
+`*_all_leds`) must be removed before ExportImages (SfMFilter); `Exclude Pose Reference Image` removes the
+reference view of each pose from the lighting images while keeping it for the mask. The reference view is the one
+whose viewId is the poseId (CameraInit: the image named `ambient` of a multi-lighting folder), or the image whose
+filename matches `Pose Reference Pattern` (e.g. `all_leds`, with images exported under their original names:
+ExportImages Naming Mode `keep`).
 
 Masks: as in the other photometric stereo nodes, from `Mask Folder` (`<poseId>.png` or `<viewId>.png`) or from the
 alpha channel of the images (e.g. ExportImages with the masks of an ImageSegmentation node). The pose masks are
@@ -113,7 +115,7 @@ initialized by the previous: directional, punctual, then LED.
 Advanced: `meshAliceVisionAxes` (true: undo the y/z flip of the AliceVision mesh export; disable for a mesh already
 in the SfMData world frame), `learningRate` (0.001), `delta` (Huber loss threshold in linear intensity, 0.01, the
 LED-getter default), `exportImages` (false: per-light diagnostic images of LED-getter), and the common
-`minViewsPerPose`, `excludePoseReferenceImage`, `imageSelection`, `seed`, `linearizeInput`, `maskThreshold`,
+`minViewsPerPose`, `excludePoseReferenceImage`, `poseReferencePattern`, `imageSelection`, `seed`, `linearizeInput`, `maskThreshold`,
 `maskVoteThreshold`, `maskPoseReferenceOnly`, `maskRemoveBorderComponents`, `maskUseGlobalFile`, `failurePolicy`,
 `verboseLevel`.
 

@@ -217,7 +217,9 @@ def rigLighting(poses, params, matching):
     """Lighting views of each pose for a light rig: {poseId: (views ordered by light key, keys)}."""
     lighting = {}
     for poseId, views in poses.items():
-        candidates = [v for v in views if not (params.excludePoseReferenceImage and str(v.get("viewId")) == poseId)]
+        referenceId = (psCommon.poseReferenceViewId(poseId, views, params.poseReferencePattern)
+                       if params.excludePoseReferenceImage else None)
+        candidates = [v for v in views if str(v.get("viewId")) != referenceId]
         lighting[poseId] = ledCommon.rigLightKeys(candidates, matching)
     return lighting
 

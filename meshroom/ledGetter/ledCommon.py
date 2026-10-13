@@ -237,7 +237,8 @@ def lightingViews(poseId, views, params, calibrated=None):
     the viewIds of calibrated (if given), then selected by psCommon.selectViews."""
     lighting = list(views)
     if params.excludePoseReferenceImage:
-        lighting = [v for v in lighting if str(v.get("viewId")) != str(poseId)]
+        referenceId = psCommon.poseReferenceViewId(poseId, views, params.poseReferencePattern)
+        lighting = [v for v in lighting if str(v.get("viewId")) != referenceId]
         if not lighting:
             raise RuntimeError("no lighting image once the pose reference image is excluded")
     if calibrated is not None:
@@ -331,10 +332,11 @@ def splitPoseValues(values, counts, index):
 def poseMask(poseId, views, params, size, logger):
     """psCommon pose mask resized to size = (width, height): (bool mask or None, description of the source)."""
     if params.maskPoseReferenceOnly:
-        reference = psCommon.representativeView(poseId, views)
-        if reference is None:
+        referenceId = psCommon.poseReferenceViewId(poseId, views, params.poseReferencePattern)
+        reference = [v for v in views if str(v.get("viewId")) == referenceId]
+        if not reference:
             raise RuntimeError("no pose reference image (viewId == poseId) to compute the mask from")
-        mask, source = psCommon.computePoseMask(poseId, [reference], params, logger)
+        mask, source = psCommon.computePoseMask(poseId, reference, params, logger)
         source += " (pose reference image only)"
     else:
         mask, source = psCommon.computePoseMask(poseId, views, params, logger)

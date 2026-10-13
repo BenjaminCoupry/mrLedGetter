@@ -230,6 +230,10 @@ def test_lighting_views(tmp_path):
     assert [v["viewId"] for v in selected] == ["7", "8"]
     with pytest.raises(RuntimeError, match="reference"):
         lc.lightingViews("7", views[:1], _params(tmp_path, excludePoseReferenceImage=True))
+    views[2]["path"] = "/x/9_all_leds.exr"
+    selected = lc.lightingViews("7", views, _params(tmp_path, excludePoseReferenceImage=True,
+                                                    poseReferencePattern="all_leds"))
+    assert [v["viewId"] for v in selected] == ["7", "8", "10"]
 
 
 def test_pose_mask_resized(tmp_path):
