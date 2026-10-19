@@ -282,8 +282,14 @@ def calibrateAll(poses, sfm, params, node, settings, backend, logger):
     for keys, poseIds in groups:
         start = time.time()
         if len(poseIds) > 1:
-            rigCalibrated, rigFailed = calibrateRig(poseIds, keys, lighting, poses, sfm, params, node, settings,
-                                                    backend, logger)
+            try:
+                rigCalibrated, rigFailed = calibrateRig(poseIds, keys, lighting, poses, sfm, params, node, settings,
+                                                        backend, logger)
+            except Exception as exc:
+                logger.error("Light rig of poses {}: failed: {}\n{}".format(", ".join(poseIds), exc,
+                                                                           traceback.format_exc()))
+                failed += poseIds
+                continue
             calibrated.update(rigCalibrated)
             failed += rigFailed
             logger.info("Light rig of {} pose(s): lights calibrated in {:.1f}s".format(len(rigCalibrated),

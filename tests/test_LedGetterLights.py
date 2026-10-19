@@ -149,6 +149,23 @@ def test_light_rig_joint_calibration(tmp_path):
     assert "rig" not in json.loads((cache / "300" / "lights.json").read_text())
 
 
+def test_light_rig_failure_follows_failure_policy(tmp_path):
+    class RigFailingBackend(FakeBackend):
+        def calibrateLights(self, scene, data, settings, exportFolder, lightNames, pose, logger):
+            if os.path.basename(os.path.dirname(exportFolder)).startswith("rig_"):
+                raise MemoryError("simulated out of memory")
+            return super().calibrateLights(scene, data, settings, exportFolder, lightNames, pose, logger)
+    sfmPath = _rigScene(tmp_path, frameIdStep=37, dropView="302")
+    with pytest.raises(RuntimeError, match="could not be processed: 100, 200"):
+        module.run(FakeChunk(_node(tmp_path, inputSfm=sfmPath, lightRig=True, failurePolicy="anyPose")),
+                   RigFailingBackend())
+    backend = RigFailingBackend()
+    module.run(FakeChunk(_node(tmp_path / "never", inputSfm=sfmPath, lightRig=True, failurePolicy="never")), backend)
+    # the independent pose 300 is still calibrated after the failure of the rig of poses 100 and 200
+    poses = json.loads((tmp_path / "never" / "cache" / "lights.json").read_text())["poses"]
+    assert list(poses) == ["300"]
+
+
 def test_light_rig_frame_id_matching(tmp_path):
     backend = FakeBackend()
     sfmPath = _rigScene(tmp_path, frameIdStep=37)

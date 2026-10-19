@@ -123,6 +123,8 @@ def solveSubset(offset, camera, mask, selected, params, node, scene, lights, set
     images = ledCommon.samplePixels(selected, params, pixels[hit], (camera.width, camera.height))
     valid = np.all(np.isfinite(images), axis=(1, 2))
     keep = np.flatnonzero(hit)[valid]
+    if not len(keep):
+        return None
     gridMask[gridMask] = np.isin(np.arange(len(pixels)), keep)
     data = {"images": images[valid], "pixels": pixels[keep], "points": points[keep], "normals": normals[keep],
             "objectsId": objectsId[keep], "gridMask": gridMask}

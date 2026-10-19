@@ -85,6 +85,22 @@ def test_split_factor_one(tmp_path):
     assert len(solves) == 2 and len(solves[0][1]["pixels"]) == _support().sum()
 
 
+def test_subset_without_finite_samples_is_skipped(tmp_path, monkeypatch):
+    samplePixels = psModule.ledCommon.samplePixels
+
+    def nanOnEvenSubset(selected, params, pixels, size):
+        images = samplePixels(selected, params, pixels, size)
+        if len(pixels) and (np.asarray(pixels) % 2 == 0).all():
+            images = np.full_like(images, np.nan)
+        return images
+    monkeypatch.setattr(psModule.ledCommon, "samplePixels", nanOnEvenSubset)
+    cache, backend = _solve(tmp_path)
+    solves = [c for c in backend.calls if c[0] == "solvePhotometricStereo"]
+    assert len(solves) == 6 and all(len(c[1]["pixels"]) for c in solves)  # 2 poses x 3 non-empty subsets of 4
+    mask = cv2.imread(str(cache / "masks" / "100.png"), cv2.IMREAD_UNCHANGED) > 0
+    assert mask.any() and not mask[::2, ::2].any()
+
+
 def test_without_mask_the_mesh_defines_the_support(tmp_path):
     cache, _ = _solve(tmp_path, alphaMask=False)
     mask = cv2.imread(str(cache / "masks" / "200.png"), cv2.IMREAD_UNCHANGED) > 0
