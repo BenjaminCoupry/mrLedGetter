@@ -29,31 +29,42 @@ with the calibrated lights. The plugin provides two nodes, harmonized with the o
 
 ## Installation
 
+### From the Meshroom Hub registry
+
+```bash
+meshroom_plugins install mrLedGetter
+```
+
+Meshroom creates the plugin's virtual environment (`venv`, with `uv`) and installs the dependencies declared in
+`pyproject.toml`.
+
+### Manual installation
+
 Meshroom uses the virtual environment named **`venv`** at the plugin root to run the nodes.
 
 ```bash
 cd /path/to/your/plugins
-git clone https://github.com/BenjaminCoupry/mrLedGetter.git
+git clone https://github.com/meshroomHub/mrLedGetter.git
 cd mrLedGetter
 
 # Python 3.11, e.g. the Python bundled with Meshroom
-/path/to/Meshroom/python/bin/python3 -m venv venv
-venv/bin/pip install --upgrade pip
-venv/bin/pip install .
+UV_PROJECT_ENVIRONMENT=venv uv sync --python /path/to/Meshroom/python/bin/python3
 
 export MESHROOM_PLUGINS_PATH=/path/to/your/plugins/mrLedGetter:$MESHROOM_PLUGINS_PATH
 ```
 
-`pip install .` installs the dependencies declared in `pyproject.toml` (Meshroom still discovers the nodes from
+`uv sync` installs the dependencies declared in `pyproject.toml` (Meshroom still discovers the nodes from
 `MESHROOM_PLUGINS_PATH`, not from site-packages):
 
-- `ledgetter`, pinned to a commit of [LED-getter](https://github.com/BenjaminCoupry/LED-getter) (with its own
-  dependencies: optax, open3d, plotly, sphericart-jax 1.0.8, ...),
+- `ledgetter`, pinned to a commit of [LED-getter](https://github.com/meshroomHubWarehouse/LED-getter) (fork of
+  [BenjaminCoupry/LED-getter](https://github.com/BenjaminCoupry/LED-getter), with its own dependencies: optax,
+  open3d, plotly, sphericart-jax 1.0.8, ...),
 - `jax[cuda12]==0.9.0.1`: sphericart-jax 1.0.8 requires `jax>=0.6.0,<0.9.1`, 0.9.0.1 is the latest release in that
   range (LED-getter itself requires plain `jax`, CPU only),
 - `numpy`, `opencv-python-headless` 4.x (image and mask I/O of `psCommon.py`; the OpenCV 5 wheels cannot read EXR), `optax`, `psutil`.
 
-To work on a local LED-getter clone: `venv/bin/pip install -e /path/to/LED-getter` after the install above.
+To work on a local LED-getter clone: `uv pip install --python venv/bin/python -e /path/to/LED-getter` after the
+install above.
 
 Launch Meshroom: the nodes appear under **Photometric Stereo**.
 

@@ -1,9 +1,5 @@
-[build-system]
-requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.build_meta"
-
 [project]
-name = "mr-led-getter"
+name = "mrLedGetter"
 version = "1.0.0"
 description = "Meshroom plugin for LED-getter self-calibrated near-light photometric stereo"
 readme = "README.md"
@@ -17,8 +13,8 @@ dependencies = [
     "numpy",
     # OpenCV 5 wheels are built without OpenEXR: psCommon reads the linear EXR exports with OpenCV 4
     "opencv-python-headless>=4.8,<5",
-    # LED-getter library, pinned to a commit (it requires plain "jax", i.e. CPU only, and sphericart-jax==1.0.8)
-    "ledgetter @ git+https://github.com/BenjaminCoupry/LED-getter.git@4d4febec3ac100cc48cba27875ebaba202f6c100",
+    # LED-getter library (it requires plain "jax", i.e. CPU only, and sphericart-jax==1.0.8)
+    "ledgetter",
     # GPU JAX: sphericart-jax 1.0.8 requires jax>=0.6.0,<0.9.1; 0.9.0.1 is the latest release in that range
     # (Python >= 3.11, CUDA 12 wheels)
     "jax[cuda12]==0.9.0.1",
@@ -28,6 +24,14 @@ dependencies = [
 ]
 
 # Meshroom discovers the nodes from MESHROOM_PLUGINS_PATH, not site-packages.
-# This distribution installs the plugin's dependencies into its venv.
-[tool.setuptools]
-packages = []
+# uv only installs the plugin's dependencies into its venv.
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+# Pinned to a commit of the meshroomHubWarehouse fork of LED-getter
+ledgetter = { git = "https://github.com/meshroomHubWarehouse/LED-getter.git", rev = "4d4febec3ac100cc48cba27875ebaba202f6c100" }
+
+[tool.meshroom]
+publisher = "meshroomHub"
+requirements = "Nvidia GPU with CUDA 12 (the nodes fall back to the CPU, much slower)."
