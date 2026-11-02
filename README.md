@@ -81,8 +81,27 @@ as linear EXR, then runs `LedGetterLights` and `LedGetterPS`.
 It needs [mrSegmentation](https://github.com/meshroomHub/mrSegmentation) (node `ImageSegmentationSam3`), not in the plugin
 registry yet: install it by hand.
 
-Images: a `MV/` folder with the multi-view images and a `PS/` folder with one subfolder per pose, holding the single-light
-images and one reference image lit by all the lights, whose filename contains `all_leds`. Set the SAM 3 prompt
+CameraInit groups the images of a folder into one pose only if the folder name starts with `PS_`. Elsewhere, each image
+becomes its own pose and the photometric stereo nodes find no multi-lighting pose, so images must follow this layout:
+
+```
+dataset/
+├── MV/
+│   ├── DSC_0001.jpg           # multi-view images
+│   └── ...
+└── PS/
+    ├── PS_01/
+    │   ├── all_leds.jpg       # reference image, lit by all the lights
+    │   ├── led_01.jpg         # single-light images
+    │   ├── led_02.jpg
+    │   └── ...
+    ├── PS_02/
+    └── ...
+```
+
+The template selects the views on the `/MV/` and `/PS/` paths: keep these exact folder names. The filename of the reference
+image must contain `all_leds` and not `ambient`: the template removes it, and CameraInit would make an `ambient` image the
+pose reference (`no view with viewId == poseId`). Drop `dataset` on Meshroom, then set the SAM 3 prompt
 (`ImageSegmentationSam3_1`, default `stone`) to your object, and *Light Rig* to your setup (on in the template: lights
 fixed to the camera).
 
