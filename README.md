@@ -10,8 +10,8 @@ with the calibrated lights. The plugin provides two nodes, harmonized with the o
 
 | Node | Step | Output |
 |------|------|--------|
-| **LedGetterLights** | Light self-calibration per pose (expensive: directional, punctual, then LED model) | `lights.json` per pose (camera and world frames) |
-| **LedGetterPS** | Normals and albedo per pose with the calibrated lights | normal maps, masks, albedo maps, `normalMaps.sfm`, `albedoMaps.sfm` (RNb-NeuS2 inputs) |
+| `LedGetterLights` | Light self-calibration per pose (expensive: directional, punctual, then LED model) | `lights.json` per pose (camera and world frames) |
+| `LedGetterPS` | Normals and albedo per pose with the calibrated lights | normal maps, masks, albedo maps, `normalMaps.sfm`, `albedoMaps.sfm` (RNb-NeuS2 inputs) |
 
 > [!IMPORTANT]
 > **Linear input images are mandatory.** The near-light model is physical: the image intensity must be
@@ -24,33 +24,40 @@ with the calibrated lights. The plugin provides two nodes, harmonized with the o
 
 ## Requirements
 
-- **Meshroom** 2025+ (its bundled **Python 3.11**: JAX 0.9 needs Python >= 3.11)
-- **CUDA 12** and an NVIDIA GPU (the nodes fall back to the CPU, much slower)
+- **[Meshroom](https://github.com/alicevision/Meshroom)** 2026.1 or later (develop branch until its release, tested on
+  commit [`edc4b6a2`](https://github.com/alicevision/Meshroom/commit/edc4b6a2)): Meshroom 2025.1.x has neither the plugin
+  manager nor the `[tool.meshroom]` settings of `pyproject.toml`
+- **NVIDIA GPU** with a driver supporting CUDA 12 (the nodes fall back to the CPU, much slower)
+- **Python** 3.11 or newer (JAX 0.9), e.g. the Python bundled with Meshroom
+
+---
 
 ## Installation
 
-### From the Meshroom Hub registry
+### 1. Install the plugin
+
+From Meshroom's plugin manager (*Manage Plugins*), or from the command line:
 
 ```bash
 meshroom_plugins install mrLedGetter
 ```
 
-Meshroom creates the plugin's virtual environment (`venv`, with `uv`) and installs the dependencies declared in
-`pyproject.toml`.
+The installer creates the plugin `venv/` with `uv sync` and installs the dependencies declared in `pyproject.toml`.
+The `LedGetterLights` and `LedGetterPS` nodes then appear in the *Photometric Stereo* category.
 
-### Manual installation
+### 2. Manual install (without the plugin manager)
 
-Meshroom uses the virtual environment named **`venv`** at the plugin root to run the nodes.
+Requires [uv](https://docs.astral.sh/uv/).
 
 ```bash
-cd /path/to/your/plugins
+cd /path/to/plugins
 git clone https://github.com/meshroomHub/mrLedGetter.git
 cd mrLedGetter
 
 # Python 3.11, e.g. the Python bundled with Meshroom
-UV_PROJECT_ENVIRONMENT=venv uv sync --python /path/to/Meshroom/python/bin/python3
+UV_PROJECT_ENVIRONMENT=venv uv sync --python /path/to/Meshroom/python/bin/python3   # Meshroom looks for venv/ at the plugin root
 
-export MESHROOM_PLUGINS_PATH=/path/to/your/plugins/mrLedGetter:$MESHROOM_PLUGINS_PATH
+export MESHROOM_PLUGINS_PATH=/path/to/plugins/mrLedGetter:$MESHROOM_PLUGINS_PATH
 ```
 
 `uv sync` installs the dependencies declared in `pyproject.toml` (Meshroom still discovers the nodes from
@@ -63,33 +70,44 @@ export MESHROOM_PLUGINS_PATH=/path/to/your/plugins/mrLedGetter:$MESHROOM_PLUGINS
   range (LED-getter itself requires plain `jax`, CPU only),
 - `numpy`, `opencv-python-headless` 4.x (image and mask I/O of `psCommon.py`; the OpenCV 5 wheels cannot read EXR), `optax`, `psutil`.
 
-To work on a local LED-getter clone: `uv pip install --python venv/bin/python -e /path/to/LED-getter` after the
-install above.
-
-Launch Meshroom: the nodes appear under **Photometric Stereo**.
-
 ---
 
-## Pipeline
+## Pipeline template
+
+`meshroom/ledGetter.mgt` (*File > New Pipeline > Led Getter*) runs the structure-from-motion of AliceVision on all the
+images, segments the object with SAM 3, builds the proxy mesh from the multi-view images, exports the single-light images
+as linear EXR, then runs `LedGetterLights` and `LedGetterPS`.
+
+It needs [mrSegmentation](https://github.com/meshroomHub/mrSegmentation) (node `ImageSegmentationSam3`), not in the plugin
+registry yet: install it by hand.
+
+CameraInit groups the images of a folder into one pose only if the folder name starts with `PS_`. Elsewhere, each image
+becomes its own pose and the photometric stereo nodes find no multi-lighting pose, so images must follow this layout:
 
 ```
-CameraInit -> ... -> StructureFromMotion -> SfMFilter* -> ExportImages (outputFileType=exr) --+--> LedGetterLights
-                                         \-> ... -> Meshing -> MeshFiltering ------------------+         |
-                                                                                               |    outputFolder
-                                                                                               |         v
-                                                                                               +--> LedGetterPS --> RNbNeuS2
+dataset/
+├── MV/
+│   ├── DSC_0001.jpg           # multi-view images
+│   └── ...
+└── PS/
+    ├── PS_01/
+    │   ├── all_leds.jpg       # reference image, lit by all the lights
+    │   ├── led_01.jpg         # single-light images
+    │   ├── led_02.jpg
+    │   └── ...
+    ├── PS_02/
+    └── ...
 ```
 
-| From | To |
-|------|----|
-| `ExportImages.outputSfMData` | `LedGetterLights.inputSfm` and `LedGetterPS.inputSfm` (the same SfMData) |
-| `MeshFiltering.outputMesh` (or `Meshing.outputMesh`) | `LedGetterLights.inputMesh` and `LedGetterPS.inputMesh` |
-| `LedGetterLights.outputFolder` | `LedGetterPS.inputLights` |
-| `LedGetterPS.outputSfmDataNormal` | `RNbNeuS2.inputNormalSfm` |
-| `LedGetterPS.outputSfmDataAlbedo` | `RNbNeuS2.inputAlbedoSfm` |
-| `LedGetterPS.outputMaskFolder` | `RNbNeuS2.inputMaskFolder` |
+The template selects the views on the `/MV/` and `/PS/` paths: keep these exact folder names. The filename of the reference
+image must contain `all_leds` and not `ambient`: the template removes it, and CameraInit would make an `ambient` image the
+pose reference (`no view with viewId == poseId`).
 
-\* The all-light / ambient reference images that are not lit by a single light (e.g. `all_leds-*`, `LIGHT.NEF`,
+Drag and drop the parent folder `dataset/` into the Image Gallery of Meshroom, then set the SAM 3 prompt
+(`ImageSegmentationSam3_1`, default `stone`) to your object, and *Light Rig* to your setup (on in the template: lights
+fixed to the camera).
+
+The all-light / ambient reference images that are not lit by a single light (e.g. `all_leds-*`, `LIGHT.NEF`,
 `*_all_leds`) must be removed before ExportImages (SfMFilter); `Exclude Pose Reference Image` removes the
 reference view of each pose from the lighting images while keeping it for the mask. The reference view is the one
 whose viewId is the poseId (CameraInit: the image named `ambient` of a multi-lighting folder), or the image whose
@@ -102,13 +120,15 @@ also restricted to the pixels whose ray hits the proxy mesh.
 
 ---
 
-## LedGetterLights
+## Nodes
+
+### `LedGetterLights`
 
 Calibrates the lights of each multi-lighting pose: given the 3D points and normals of the proxy mesh seen by the
 camera, LED-getter fits successive light models to the images (Lambertian surface, Huber loss, Adam), each one
 initialized by the previous: directional, punctual, then LED.
 
-### Inputs
+#### Inputs
 
 | Parameter | Label | Default | Description |
 |-----------|-------|---------|-------------|
@@ -130,7 +150,7 @@ LED-getter default), `exportImages` (false: per-light diagnostic images of LED-g
 `maskVoteThreshold`, `maskPoseReferenceOnly`, `maskRemoveBorderComponents`, `maskUseGlobalFile`, `failurePolicy`,
 `verboseLevel`.
 
-### Light rig
+#### Light rig
 
 By default the lights of each pose are calibrated alone (LED-getter calibrates one pose at a time). When the lights
 are fixed to the camera (LED ring or dome carrying the camera, lighting arm; the object moves between poses), the
@@ -151,7 +171,7 @@ The light of an image is identified by its frame number (AliceVision `frameId`, 
 Poses whose sequence of lights is shared by no other pose (another number of images, other frame numbers) are
 calibrated alone, as without the option. `nbImages` selects the same lights in every pose of a rig.
 
-### Outputs
+#### Outputs
 
 | Parameter | Description |
 |-----------|-------------|
@@ -179,14 +199,12 @@ Model (per light, color channel c, surface point x with normal n and albedo rho_
 `image_c = rho_c * max(0, n . w) * irradiance_c`.
 Positions are in SfMData world units; the power is relative to the albedo scale (the albedo is clamped to [0, 1]).
 
----
-
-## LedGetterPS
+### `LedGetterPS`
 
 Estimates the normal and the albedo of each pixel with the calibrated lights (only the lighting images with a
 calibrated light are used); the normals are initialized by the proxy mesh and the albedo by the calibration.
 
-### Inputs
+#### Inputs
 
 Same inputs as the other photometric stereo nodes (`inputSfm`, `maskFolder`, `downscale`, `nbImages`,
 `outputFormat` (`png16` / `exr`), `useGpu` and the common advanced inputs, including `normalConvention` and
@@ -201,7 +219,7 @@ Same inputs as the other photometric stereo nodes (`inputSfm`, `maskFolder`, `do
 | `gpuChunks` | GPU Chunks Per Subset | 100 | Advanced: successive GPU chunks per subset (LED-getter `--ps_chunck_number`) |
 | `learningRate`, `delta` | | 0.001, 0.01 | Advanced: Adam learning rate, Huber loss threshold |
 
-### Outputs
+#### Outputs
 
 As the other photometric stereo nodes, ready for RNb-NeuS2:
 
@@ -230,6 +248,8 @@ As the other photometric stereo nodes, ready for RNb-NeuS2:
 - **Normals**: LED-getter's normals (camera frame above) are converted to the psCommon convention (OpenGL camera
   frame: x right, y up, z towards the camera) or kept in the OpenCV frame with `normalConvention=opencv`.
 
+---
+
 ## GPU memory
 
 JAX defaults are kept: on first use, JAX preallocates 75% of the GPU memory of the node process. To allocate on
@@ -248,16 +268,31 @@ Memory knobs: `samplingStep` (LedGetterLights), `splitFactor` and `gpuChunks` (L
 
 ## Development
 
+### Tests
+
 CPU unit tests (no JAX needed: the LED-getter calls are isolated in `ledBackend.py`, replaced by a stand-in):
 
 ```bash
 PYTHONPATH=/path/to/Meshroom venv/bin/python -m pytest tests
 ```
 
+### Working on a local LED-getter clone
+
+The nodes import LED-getter from the plugin `venv/`. To run a local clone instead, install it in editable mode in that venv:
+
+```bash
+uv pip install --python venv/bin/python -e /path/to/LED-getter
+```
+
+Updating or reinstalling the plugin from the plugin manager recreates `venv/`: run this command again afterwards.
+
+### Plugin structure
+
 ```
 mrLedGetter/
 ├── meshroom/
 │   ├── config.json
+│   ├── ledGetter.mgt            # pipeline template
 │   └── ledGetter/
 │       ├── LedGetterLights.py   # node: light calibration
 │       ├── LedGetterPS.py       # node: normals and albedo
@@ -270,7 +305,22 @@ mrLedGetter/
 └── requirements.txt
 ```
 
-## Publications
+---
+
+## Related Projects
+
+| Project | Description |
+|---------|-------------|
+| [LED-getter](https://github.com/meshroomHubWarehouse/LED-getter) | Self-calibrated near-light photometric stereo using a geometric proxy |
+| [mrLINOUniPS](https://github.com/meshroomHub/mrLINOUniPS) | Meshroom plugin for LINO-UniPS photometric stereo |
+| [mrSDMUniPS](https://github.com/meshroomHub/mrSDMUniPS) | Meshroom plugin for SDM-UniPS photometric stereo |
+| [mrUniMSPS](https://github.com/meshroomHub/mrUniMSPS) | Meshroom plugin for Uni-MS-PS photometric stereo |
+| [mrRNbNeuS2](https://github.com/meshroomHub/mrRNbNeuS2) | Meshroom plugin for RNb-NeuS2 neural surface reconstruction |
+| [mrOpenRNb](https://github.com/meshroomHub/mrOpenRNb) | Meshroom plugin for Open-RNb neural surface reconstruction |
+
+---
+
+## Citation
 
 - **Self-calibrated Near-light Photometric Stereo using a Geometric Proxy**  
   B. Coupry, F. Lauze, A. Laurent, J. Mélou, Y. Quéau, J.-D. Durou (2025)  
@@ -281,6 +331,8 @@ mrLedGetter/
   B. Coupry, B. Brument, A. Laurent, J. Mélou, Y. Quéau, J.-D. Durou (2025)  
   In *IEEE/CVF Winter Conference on Applications of Computer Vision (WACV)*, pp. 3457–3466.  
   [PDF](https://hal.science/hal-04942610v1/file/WACV_25_bis.pdf)
+
+---
 
 ## License
 
