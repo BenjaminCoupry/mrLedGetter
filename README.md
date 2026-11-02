@@ -101,7 +101,9 @@ dataset/
 
 The template selects the views on the `/MV/` and `/PS/` paths: keep these exact folder names. The filename of the reference
 image must contain `all_leds` and not `ambient`: the template removes it, and CameraInit would make an `ambient` image the
-pose reference (`no view with viewId == poseId`). Drop `dataset` on Meshroom, then set the SAM 3 prompt
+pose reference (`no view with viewId == poseId`).
+
+Drag and drop the parent folder `dataset/` into the Image Gallery of Meshroom, then set the SAM 3 prompt
 (`ImageSegmentationSam3_1`, default `stone`) to your object, and *Light Rig* to your setup (on in the template: lights
 fixed to the camera).
 
