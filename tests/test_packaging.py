@@ -23,9 +23,13 @@ def test_license_and_authors():
 
 def test_pinned_dependencies():
     requirements = {Requirement(r).name: Requirement(r) for r in _project()["dependencies"]}
-    assert re.search(r"LED-getter\.git@[0-9a-f]{40}$", requirements["ledgetter"].url)  # full commit sha
+    with open(os.path.join(ROOT, "pyproject.toml"), "rb") as f:
+        rev = tomllib.load(f)["tool"]["uv"]["sources"]["ledgetter"]["rev"]
+    assert re.fullmatch(r"[0-9a-f]{40}", rev)  # full commit sha
     assert requirements["jax"].extras == {"cuda12"} and str(requirements["jax"].specifier).startswith("==")
     with open(os.path.join(ROOT, "requirements.txt")) as f:
         lines = [line.strip() for line in f if line.strip()]
-    listed = {Requirement(line).name: str(Requirement(line)) for line in lines}
-    assert listed == {name: str(r) for name, r in requirements.items()}
+    listed = {Requirement(line).name: Requirement(line) for line in lines}
+    assert listed["ledgetter"].url.endswith("@" + rev)  # same commit as the plugin manager install
+    assert {n: str(r) for n, r in listed.items() if n != "ledgetter"} == \
+        {n: str(r) for n, r in requirements.items() if n != "ledgetter"}
