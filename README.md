@@ -24,33 +24,37 @@ with the calibrated lights. The plugin provides two nodes, harmonized with the o
 
 ## Requirements
 
-- **Meshroom** 2025+ (its bundled **Python 3.11**: JAX 0.9 needs Python >= 3.11)
-- **CUDA 12** and an NVIDIA GPU (the nodes fall back to the CPU, much slower)
+- **[Meshroom](https://github.com/alicevision/Meshroom)** 2026.1 or later (develop branch until its release):
+  Meshroom 2025.1.x has neither the plugin manager nor the `[tool.meshroom]` settings of `pyproject.toml`
+- **NVIDIA GPU** with a driver supporting CUDA 12 (the nodes fall back to the CPU, much slower)
+- **Python** 3.11 or newer (JAX 0.9), e.g. the Python bundled with Meshroom
 
 ## Installation
 
-### From the Meshroom Hub registry
+### With the plugin manager
+
+From Meshroom's plugin manager (*Manage Plugins*), or from the command line:
 
 ```bash
 meshroom_plugins install mrLedGetter
 ```
 
-Meshroom creates the plugin's virtual environment (`venv`, with `uv`) and installs the dependencies declared in
-`pyproject.toml`.
+The installer creates the plugin `venv/` with `uv sync` and installs the dependencies declared in `pyproject.toml`.
+The **LedGetterLights** and **LedGetterPS** nodes then appear under the **Photometric Stereo** category.
 
-### Manual installation
+### Manual install (without the plugin manager)
 
-Meshroom uses the virtual environment named **`venv`** at the plugin root to run the nodes.
+Requires [uv](https://docs.astral.sh/uv/).
 
 ```bash
-cd /path/to/your/plugins
+cd /path/to/plugins
 git clone https://github.com/meshroomHub/mrLedGetter.git
 cd mrLedGetter
 
 # Python 3.11, e.g. the Python bundled with Meshroom
-UV_PROJECT_ENVIRONMENT=venv uv sync --python /path/to/Meshroom/python/bin/python3
+UV_PROJECT_ENVIRONMENT=venv uv sync --python /path/to/Meshroom/python/bin/python3   # Meshroom looks for venv/ at the plugin root
 
-export MESHROOM_PLUGINS_PATH=/path/to/your/plugins/mrLedGetter:$MESHROOM_PLUGINS_PATH
+export MESHROOM_PLUGINS_PATH=/path/to/plugins/mrLedGetter:$MESHROOM_PLUGINS_PATH
 ```
 
 `uv sync` installs the dependencies declared in `pyproject.toml` (Meshroom still discovers the nodes from
@@ -63,10 +67,16 @@ export MESHROOM_PLUGINS_PATH=/path/to/your/plugins/mrLedGetter:$MESHROOM_PLUGINS
   range (LED-getter itself requires plain `jax`, CPU only),
 - `numpy`, `opencv-python-headless` 4.x (image and mask I/O of `psCommon.py`; the OpenCV 5 wheels cannot read EXR), `optax`, `psutil`.
 
-To work on a local LED-getter clone: `uv pip install --python venv/bin/python -e /path/to/LED-getter` after the
-install above.
+### Working on a local LED-getter clone
 
-Launch Meshroom: the nodes appear under **Photometric Stereo**.
+The nodes import LED-getter from the plugin `venv/`. To run a local clone instead, install it in editable mode in that
+venv:
+
+```bash
+uv pip install --python venv/bin/python -e /path/to/LED-getter
+```
+
+Updating or reinstalling the plugin from the plugin manager recreates `venv/`: run this command again afterwards.
 
 ---
 
