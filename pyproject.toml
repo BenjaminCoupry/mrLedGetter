@@ -1,6 +1,6 @@
 [project]
 name = "mrLedGetter"
-version = "1.0.1"
+version = "1.0.2"
 description = "Meshroom plugin for LED-getter self-calibrated near-light photometric stereo"
 readme = "README.md"
 license = {text = "MIT"}
